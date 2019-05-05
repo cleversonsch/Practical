@@ -1,0 +1,146 @@
+---
+title: "Pratical Machine Learning - Course Project"
+output:
+  html_document: default
+  pdf_document: default
+---
+  Author: Cleverson  
+  Date: May 2019
+
+## Overview 
+The aim of this project is to find the most precise algorithm to predict human activity classe, such as: sitting-down, sitting, standing-up, standing and walking. The prediction is based on data collected from 4 subjects wearing accelorometers during 8 hours.  
+The analysis starts by slicing the original training data set in 2, the first to train and the second to test. The training data set is preprocessed to gather the most important predictors to find the activity classes. The fitting models are then created and their accuracy compared. The most precise is used to run the predictions on validation dataset.
+## Preprocessing  
+Downloading the files:
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+download.file(url="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+              destfile="pml-training.csv")
+download.file(url="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+              destfile="pml-testing.csv")
+```
+Loading the libraries:
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+library(caret)
+library(randomForest)
+```
+Loading the data sets:
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+data_training<-read.csv("pml-training.csv")
+validation<-read.csv("pml-testing.csv")
+```
+### Slicing the data
+70% of the data are used to train, the other 30% are used to test. 
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+inTrain<-createDataPartition(y=data_training$classe,p=0.7,list=FALSE)
+training<-data_training[inTrain,]
+testing<-data_training[-inTrain,]
+```
+```{r, cache=TRUE}
+dim(training)
+```
+### Removing variables
+Apart from the outcome (**classe** data set variable), there are a total of 159 variables (potential predictors). To ease the processing, variables with NA values are removed, a total of 93 variables remains:
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+training<-training[,colSums(is.na(training))==0]
+```
+```{r,cache=TRUE}
+dim(training)
+```
+Number of variables can still be decreased, a second step is to remove the ones with  very few unique values, that means removing the ones with low variance. A total of 59 variables remains:
+```{r, message=FALSE, warning=FALSE, cache=TRUE, results='hide'}
+nzv<-nearZeroVar(training)
+training<-training[,-nzv]
+```
+```{r,cache=TRUE}
+dim(training)
+```
+Looking into the data set, there are some variables that are used as identification and index, that means they didn't come from the accelorometers and don't have a role to play on the prediction part. These variables are removed, a total of 53 variables remains:
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+training<-training[,c(7:59)]
+```
+```{r, cache=TRUE}
+dim(training)
+```
+This training data set version is the one used to train, test and validate.  
+
+## Training  
+To ensure the results are repetable:
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+set.seed(1245)
+```
+For non-linear settings, prediction with decision trees has better performance compared to linear regression models. 3 fitting models are created based on training data set:
+
+### 1. Regression Trees model  
+Starting by the basic tree model:
+```{r message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+mod.fit.rpart<-train(classe~., data=training, method="rpart")
+```
+
+### 2. Random Forests model  
+This model  bootstrap samples, that means data set is resampled and for each of the samples, a regression tree is created leading to a large number of trees in the end. That improves accuracy, however it is very slow and there is a risk of overfitting.
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+mod.fit.rf<-train(classe~., data=training, method="rf", prox=TRUE)
+```
+
+### 3. Gradient Boosting Machine model  
+The idea behind boosting is to take weak predictors and add them up to take advantage of their strength, it was used here with trees (**gbm**).
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+mod.fit.gbm<-train(classe~., method="gbm", data=training, verbose=FALSE)
+```
+
+## Predicting  
+Each fitting model was used to predict on testing data set.
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+pred.rpart<-predict(mod.fit.rpart,testing)
+pred.rf<-predict(mod.fit.rf,testing)
+pred.gbm<-predict(mod.fit.gbm,testing)
+
+```
+
+### Accuracy 
+Accuracy of these 3 models  were calculated through confusion matrix, which is used to describe the performance of a model on a test data set.  
+Tree model accuracy:
+```{r, cache=TRUE}
+plot(mod.fit.rpart)
+```
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+cMatrix_rpart<-confusionMatrix(pred.rpart,testing$classe)
+```
+```{r, cache=TRUE}
+cMatrix_rpart$table
+cMatrix_rpart$overall[1]
+```
+Random Forest model accuracy:
+```{r, cache=TRUE}
+plot(mod.fit.rf)
+```
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+cMatrix_rf<-confusionMatrix(pred.rf,testing$classe)
+```
+```{r, cache=TRUE}
+cMatrix_rf$table
+cMatrix_rf$overall[1]
+```
+Gradient Boosting Machine model accuracy:
+```{r, cache=TRUE}
+plot(mod.fit.gbm)
+```
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+cMatrix_gbm<-confusionMatrix(pred.gbm,testing$classe)
+```
+```{r, cache=TRUE}
+cMatrix_gbm$table
+cMatrix_gbm$overall[1]
+```
+The most precise model is the Random Forest, accuracy of 0.99. So, no combination of prediction models is necessary. This is the model used for the validation step.  
+
+## Validating  
+A set of 20 observations (validation data set) were used to validate the prediction model.  
+```{r, message=FALSE, cache=TRUE, warning=FALSE, results='hide'}
+pred.validation<-predict(mod.fit.rf,validation)
+pred.results <- data.frame(problem_id=validation$problem_id,predicted=pred.validation)
+```
+These are the results:
+```{r, cache=TRUE}
+print(pred.results)
+```
